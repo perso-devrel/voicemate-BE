@@ -1,35 +1,90 @@
-import jwt from 'jsonwebtoken';
+import request from 'supertest';
+import { app } from '../src/index';
+import { supabase } from '../src/config/supabase';
 
-const JWT_SECRET = 'test-jwt-secret-key-for-testing-purposes-only';
+export const TEST_PASSWORD = 'testpass123';
 
-export const TEST_USER_ID = '550e8400-e29b-41d4-a716-446655440000';
-export const TEST_USER2_ID = '550e8400-e29b-41d4-a716-446655440001';
+export async function getAuthToken(
+  email: string,
+  password: string = TEST_PASSWORD,
+): Promise<{ token: string; userId: string }> {
+  // try login first
+  let res = await request(app).post('/api/auth/login').send({ email, password });
+  if (res.status === 200) {
+    return { token: res.body.access_token, userId: res.body.user.id };
+  }
 
-export function generateTestToken(userId: string = TEST_USER_ID): string {
-  return jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: '1h' });
+  // create user via admin API (bypasses rate limit, auto-confirms email)
+  const createResult = await supabase.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+
+  if (createResult.error) {
+    if (createResult.error.message.includes('already been registered')) {
+      // user exists but unconfirmed — find and confirm via admin
+      const { data: { users } } = await supabase.auth.admin.listUsers();
+      const user = users.find((u) => u.email === email);
+      if (user) {
+        await supabase.auth.admin.updateUserById(user.id, {
+          email_confirm: true,
+        });
+      }
+    } else {
+      throw new Error(`Admin create failed for ${email}: ${createResult.error.message}`);
+    }
+  }
+
+  // login
+  res = await request(app).post('/api/auth/login').send({ email, password });
+  if (res.status === 200) {
+    return { token: res.body.access_token, userId: res.body.user.id };
+  }
+
+  throw new Error(`Auth failed for ${email}: ${res.body.error}`);
 }
 
-export const TEST_PROFILE = {
-  id: TEST_USER_ID,
-  display_name: 'Test User',
-  birth_date: '1995-01-01',
-  gender: 'male',
-  nationality: 'KR',
-  language: 'ko',
-  bio: 'Hello',
-  interests: ['music', 'travel'],
-  photos: ['https://example.com/photo1.jpg'],
-  elevenlabs_voice_id: null,
-  voice_sample_url: null,
-  voice_clone_status: 'pending',
-  is_active: true,
-  created_at: '2024-01-01T00:00:00Z',
-  updated_at: '2024-01-01T00:00:00Z',
-};
+export async function createTestProfile(
+  token: string,
+  overrides: Record<string, any> = {},
+) {
+  const res = await request(app)
+    .put('/api/profile/me')
+    .set('Authorization', `Bearer ${token}`)
+    .send({
+      display_name: 'Test User',
+      birth_date: '1995-01-01',
+      gender: 'male',
+      nationality: 'KR',
+      language: 'ko',
+      ...overrides,
+    });
+  return res.body;
+}
 
-export const TEST_MATCH = {
-  id: '660e8400-e29b-41d4-a716-446655440000',
-  user1_id: TEST_USER_ID,
-  user2_id: TEST_USER2_ID,
-  created_at: '2024-01-01T00:00:00Z',
-};
+export async function cleanupUser(userId: string) {
+  const { data: matches } = await supabase
+    .from('matches')
+    .select('id')
+    .or(`user1_id.eq.${userId},user2_id.eq.${userId}`);
+
+  if (matches?.length) {
+    for (const match of matches) {
+      await supabase.from('messages').delete().eq('match_id', match.id);
+    }
+    await supabase
+      .from('matches')
+      .delete()
+      .or(`user1_id.eq.${userId},user2_id.eq.${userId}`);
+  }
+
+  await supabase.from('swipes').delete().eq('swiper_id', userId);
+  await supabase.from('swipes').delete().eq('swiped_id', userId);
+  await supabase.from('blocks').delete().eq('blocker_id', userId);
+  await supabase.from('blocks').delete().eq('blocked_id', userId);
+  await supabase.from('reports').delete().eq('reporter_id', userId);
+  await supabase.from('reports').delete().eq('reported_id', userId);
+  await supabase.from('user_preferences').delete().eq('user_id', userId);
+  await supabase.from('profiles').delete().eq('id', userId);
+}
