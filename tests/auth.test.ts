@@ -8,6 +8,96 @@ describe('Auth Routes', () => {
     vi.clearAllMocks();
   });
 
+  describe('POST /api/auth/signup', () => {
+    it('email/password 없으면 400', async () => {
+      const res = await request(app).post('/api/auth/signup').send({});
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('email and password are required');
+    });
+
+    it('회원가입 성공 시 201', async () => {
+      vi.mocked(supabaseAuth.auth.signUp).mockResolvedValue({
+        data: {
+          session: {
+            access_token: 'access-123',
+            refresh_token: 'refresh-123',
+          },
+          user: {
+            id: 'user-123',
+            email: 'test@example.com',
+          },
+        },
+        error: null,
+      } as any);
+
+      const res = await request(app)
+        .post('/api/auth/signup')
+        .send({ email: 'test@example.com', password: 'password123' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.access_token).toBe('access-123');
+      expect(res.body.user.id).toBe('user-123');
+    });
+
+    it('중복 이메일이면 400', async () => {
+      vi.mocked(supabaseAuth.auth.signUp).mockResolvedValue({
+        data: { session: null, user: null } as any,
+        error: { message: 'User already registered' } as any,
+      });
+
+      const res = await request(app)
+        .post('/api/auth/signup')
+        .send({ email: 'dup@example.com', password: 'password123' });
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('POST /api/auth/login', () => {
+    it('email/password 없으면 400', async () => {
+      const res = await request(app).post('/api/auth/login').send({});
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('email and password are required');
+    });
+
+    it('로그인 성공', async () => {
+      vi.mocked(supabaseAuth.auth.signInWithPassword).mockResolvedValue({
+        data: {
+          session: {
+            access_token: 'access-456',
+            refresh_token: 'refresh-456',
+          },
+          user: {
+            id: 'user-456',
+            email: 'test@example.com',
+          },
+        },
+        error: null,
+      } as any);
+
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ email: 'test@example.com', password: 'password123' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.access_token).toBe('access-456');
+      expect(res.body.user.id).toBe('user-456');
+    });
+
+    it('잘못된 비밀번호면 401', async () => {
+      vi.mocked(supabaseAuth.auth.signInWithPassword).mockResolvedValue({
+        data: { session: null, user: null } as any,
+        error: { message: 'Invalid login credentials' } as any,
+      });
+
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ email: 'test@example.com', password: 'wrong' });
+
+      expect(res.status).toBe(401);
+    });
+  });
+
   describe('POST /api/auth/google', () => {
     it('id_token 없으면 400', async () => {
       const res = await request(app).post('/api/auth/google').send({});

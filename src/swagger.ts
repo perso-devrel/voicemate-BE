@@ -156,6 +156,37 @@ export const swaggerDocument = {
     },
 
     // ── Auth ──
+    '/api/auth/signup': {
+      post: {
+        tags: ['Auth'],
+        summary: '이메일+비밀번호 회원가입',
+        security: [],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['email', 'password'], properties: { email: { type: 'string', format: 'email' }, password: { type: 'string' } } } } },
+        },
+        responses: {
+          201: { description: '회원가입 성공', content: { 'application/json': { schema: { type: 'object', properties: { access_token: { type: 'string' }, refresh_token: { type: 'string' }, user: { type: 'object', properties: { id: { type: 'string', format: 'uuid' }, email: { type: 'string', format: 'email' } } } } } } } },
+          400: { description: '입력 오류 또는 중복 이메일', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
+    '/api/auth/login': {
+      post: {
+        tags: ['Auth'],
+        summary: '이메일+비밀번호 로그인',
+        security: [],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['email', 'password'], properties: { email: { type: 'string', format: 'email' }, password: { type: 'string' } } } } },
+        },
+        responses: {
+          200: { description: '로그인 성공', content: { 'application/json': { schema: { type: 'object', properties: { access_token: { type: 'string' }, refresh_token: { type: 'string' }, user: { type: 'object', properties: { id: { type: 'string', format: 'uuid' }, email: { type: 'string', format: 'email' } } } } } } } },
+          400: { description: 'email/password 누락', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          401: { description: '인증 실패', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
     '/api/auth/google': {
       post: {
         tags: ['Auth'],

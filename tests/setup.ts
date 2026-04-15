@@ -55,6 +55,8 @@ export const mockStorage = {
 export const mockRpc = vi.fn();
 
 const mockAuth = {
+  signUp: vi.fn(),
+  signInWithPassword: vi.fn(),
   signInWithIdToken: vi.fn(),
   refreshSession: vi.fn(),
 };
