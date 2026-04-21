@@ -6,7 +6,7 @@ import { translateMessage } from '../services/translation';
 import { authMiddleware } from '../middleware/auth';
 import { validateBody, validateQuery } from '../middleware/validate';
 import { sendMessageSchema, messageQuerySchema } from '../schemas/message';
-import { AuthRequest } from '../types';
+import { AuthRequest, Emotion } from '../types';
 
 const router = Router();
 
@@ -55,7 +55,10 @@ router.get('/:matchId/messages', validateQuery(messageQuerySchema), async (req: 
 // 메시지 전송 (번역 + 더빙 파이프라인)
 router.post('/:matchId/messages', validateBody(sendMessageSchema), async (req: AuthRequest, res: Response) => {
   const { matchId } = req.params;
-  const { text } = req.body;
+  const { text, emotion } = req.body as { text: string; emotion?: Emotion };
+  // neutral = "태그 없음" — DB에는 null로 저장 (CHECK constraint도 neutral 제외)
+  const storedEmotion: Exclude<Emotion, 'neutral'> | null =
+    emotion && emotion !== 'neutral' ? emotion : null;
 
   // 매치 확인 + 상대방 정보 조회
   const { data: match } = await supabase
@@ -113,6 +116,7 @@ router.post('/:matchId/messages', validateBody(sendMessageSchema), async (req: A
       original_text: text,
       original_language: sender.language,
       translated_language: recipient.language,
+      emotion: storedEmotion,
       audio_status: sender.elevenlabs_voice_id ? 'processing' : 'pending',
     })
     .select()
@@ -128,8 +132,14 @@ router.post('/:matchId/messages', validateBody(sendMessageSchema), async (req: A
 
   // 비동기로 번역 + TTS 처리
   if (sender.elevenlabs_voice_id) {
-    processMessageAudio(message.id, text, sender.elevenlabs_voice_id, sender.language, recipient.language)
-      .catch((err) => console.error('[processMessageAudio unhandled]', err));
+    processMessageAudio(
+      message.id,
+      text,
+      sender.elevenlabs_voice_id,
+      sender.language,
+      recipient.language,
+      storedEmotion
+    ).catch((err) => console.error('[processMessageAudio unhandled]', err));
   }
 });
 
@@ -207,7 +217,8 @@ router.post('/:messageId/retry', async (req: AuthRequest, res: Response) => {
     message.original_text,
     sender.elevenlabs_voice_id,
     message.original_language,
-    message.translated_language
+    message.translated_language,
+    message.emotion ?? null
   ).catch((err) => console.error('[processMessageAudio unhandled]', err));
 });
 
@@ -216,7 +227,8 @@ async function processMessageAudio(
   text: string,
   voiceId: string,
   sourceLanguage: string,
-  targetLanguage: string
+  targetLanguage: string,
+  emotion: Exclude<Emotion, 'neutral'> | null
 ): Promise<void> {
   try {
     let textToSynthesize = text;
@@ -232,7 +244,7 @@ async function processMessageAudio(
       translatedText = translation;
     }
 
-    const audio = await synthesizeSpeech(textToSynthesize, voiceId);
+    const audio = await synthesizeSpeech(textToSynthesize, voiceId, emotion);
 
     const path = `${messageId}.mp3`;
     const audioUrl = await uploadFile('voice-messages', path, audio, 'audio/mpeg');

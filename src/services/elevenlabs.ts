@@ -1,5 +1,6 @@
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { env } from '../config/env';
+import { Emotion } from '../types';
 
 const client = new ElevenLabsClient({ apiKey: env.elevenlabs.apiKey });
 
@@ -35,10 +36,16 @@ async function streamToBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffe
   return Buffer.concat(chunks);
 }
 
-export async function synthesizeSpeech(text: string, voiceId: string): Promise<Buffer> {
+export async function synthesizeSpeech(
+  text: string,
+  voiceId: string,
+  emotion?: Exclude<Emotion, 'neutral'> | null
+): Promise<Buffer> {
+  const prefixed = emotion ? `[${emotion}] ${text}` : text;
   const audioStream = await client.textToSpeech.convert(voiceId, {
-    text,
-    modelId: 'eleven_multilingual_v2',
+    text: prefixed,
+    modelId: 'eleven_v3',
+    voiceSettings: { stability: 0.4 },
   });
   return streamToBuffer(audioStream);
 }
