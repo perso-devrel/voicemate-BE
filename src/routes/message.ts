@@ -1,11 +1,12 @@
 import { Router, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { uploadFile } from '../services/storage';
-import { generateDubbedAudio } from '../services/elevenlabs';
+import { synthesizeSpeech } from '../services/elevenlabs';
+import { translateMessage } from '../services/translation';
 import { authMiddleware } from '../middleware/auth';
 import { validateBody, validateQuery } from '../middleware/validate';
 import { sendMessageSchema, messageQuerySchema } from '../schemas/message';
-import { AuthRequest } from '../types';
+import { AuthRequest, Emotion } from '../types';
 
 const router = Router();
 
@@ -54,7 +55,10 @@ router.get('/:matchId/messages', validateQuery(messageQuerySchema), async (req: 
 // 메시지 전송 (번역 + 더빙 파이프라인)
 router.post('/:matchId/messages', validateBody(sendMessageSchema), async (req: AuthRequest, res: Response) => {
   const { matchId } = req.params;
-  const { text } = req.body;
+  const { text, emotion } = req.body as { text: string; emotion?: Emotion };
+  // neutral = "태그 없음" — DB에는 null로 저장 (CHECK constraint도 neutral 제외)
+  const storedEmotion: Exclude<Emotion, 'neutral'> | null =
+    emotion && emotion !== 'neutral' ? emotion : null;
 
   // 매치 확인 + 상대방 정보 조회
   const { data: match } = await supabase
@@ -112,6 +116,7 @@ router.post('/:matchId/messages', validateBody(sendMessageSchema), async (req: A
       original_text: text,
       original_language: sender.language,
       translated_language: recipient.language,
+      emotion: storedEmotion,
       audio_status: sender.elevenlabs_voice_id ? 'processing' : 'pending',
     })
     .select()
@@ -125,10 +130,16 @@ router.post('/:matchId/messages', validateBody(sendMessageSchema), async (req: A
   // 즉시 응답 반환 (텍스트 메시지는 바로 전달)
   res.status(201).json(message);
 
-  // 비동기로 음성 더빙 처리
+  // 비동기로 번역 + TTS 처리
   if (sender.elevenlabs_voice_id) {
-    processDubbing(message.id, text, sender.elevenlabs_voice_id, sender.language, recipient.language)
-      .catch((err) => console.error('[processDubbing unhandled]', err));
+    processMessageAudio(
+      message.id,
+      text,
+      sender.elevenlabs_voice_id,
+      sender.language,
+      recipient.language,
+      storedEmotion
+    ).catch((err) => console.error('[processMessageAudio unhandled]', err));
   }
 });
 
@@ -201,29 +212,39 @@ router.post('/:messageId/retry', async (req: AuthRequest, res: Response) => {
 
   res.json({ status: 'processing' });
 
-  processDubbing(
+  processMessageAudio(
     messageId as string,
     message.original_text,
     sender.elevenlabs_voice_id,
     message.original_language,
-    message.translated_language
-  ).catch((err) => console.error('[processDubbing unhandled]', err));
+    message.translated_language,
+    message.emotion ?? null
+  ).catch((err) => console.error('[processMessageAudio unhandled]', err));
 });
 
-async function processDubbing(
+async function processMessageAudio(
   messageId: string,
   text: string,
   voiceId: string,
   sourceLanguage: string,
-  targetLanguage: string
+  targetLanguage: string,
+  emotion: Exclude<Emotion, 'neutral'> | null
 ): Promise<void> {
   try {
-    const { audio, translatedText } = await generateDubbedAudio(
-      text,
-      voiceId,
-      sourceLanguage,
-      targetLanguage
-    );
+    let textToSynthesize = text;
+    let translatedText: string | null = null;
+
+    if (sourceLanguage !== targetLanguage) {
+      const { translation } = await translateMessage({
+        text,
+        sourceLanguage,
+        targetLanguage,
+      });
+      textToSynthesize = translation;
+      translatedText = translation;
+    }
+
+    const audio = await synthesizeSpeech(textToSynthesize, voiceId, emotion);
 
     const path = `${messageId}.mp3`;
     const audioUrl = await uploadFile('voice-messages', path, audio, 'audio/mpeg');
@@ -237,7 +258,8 @@ async function processDubbing(
       })
       .eq('id', messageId);
   } catch (error) {
-    console.error(`[Dubbing Error] messageId=${messageId}:`, error);
+    console.error(`[processMessageAudio] messageId=${messageId}:`, error);
+    console.dir(error, { depth: null });
     await supabase.from('messages').update({ audio_status: 'failed' }).eq('id', messageId);
   }
 }

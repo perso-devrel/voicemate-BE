@@ -40,6 +40,16 @@ export interface Match {
   created_at: string;
 }
 
+export type Emotion =
+  | 'neutral'
+  | 'happy'
+  | 'sad'
+  | 'angry'
+  | 'surprised'
+  | 'excited'
+  | 'whispering'
+  | 'laughing';
+
 export interface Message {
   id: string;
   match_id: string;
@@ -50,6 +60,7 @@ export interface Message {
   translated_language: string | null;
   audio_url: string | null;
   audio_status: 'pending' | 'processing' | 'ready' | 'failed';
+  emotion: Emotion | null;
   read_at: string | null;
   created_at: string;
 }

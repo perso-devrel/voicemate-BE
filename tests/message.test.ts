@@ -83,6 +83,36 @@ describe('Message Routes', () => {
       expect(res.status).toBe(201);
       expect(res.body.original_text).toBe('Hello!');
       expect(res.body.sender_id).toBe(userId1);
+      expect(res.body.emotion).toBeNull();
+    });
+
+    it('emotion 포함 전송 성공', async () => {
+      const res = await request(app)
+        .post(`/api/matches/${matchId}/messages`)
+        .set('Authorization', `Bearer ${token1}`)
+        .send({ text: '왜 이제야 연락해?', emotion: 'angry' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.emotion).toBe('angry');
+    });
+
+    it('emotion=neutral은 null로 저장', async () => {
+      const res = await request(app)
+        .post(`/api/matches/${matchId}/messages`)
+        .set('Authorization', `Bearer ${token1}`)
+        .send({ text: 'hi', emotion: 'neutral' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.emotion).toBeNull();
+    });
+
+    it('잘못된 emotion 값이면 400', async () => {
+      const res = await request(app)
+        .post(`/api/matches/${matchId}/messages`)
+        .set('Authorization', `Bearer ${token1}`)
+        .send({ text: 'hi', emotion: 'sleepy' });
+
+      expect(res.status).toBe(400);
     });
   });
 

@@ -23,4 +23,8 @@ export const env = {
   elevenlabs: {
     apiKey: required('ELEVENLABS_API_KEY'),
   },
+
+  gemini: {
+    apiKey: required('GEMINI_API_KEY'),
+  },
 };
