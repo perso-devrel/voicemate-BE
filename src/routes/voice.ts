@@ -51,6 +51,8 @@ router.post('/clone', upload.single('audio'), async (req: AuthRequest, res: Resp
 
     res.json({ voice_id: voiceId, status: 'ready' });
   } catch (error) {
+    console.error('[Voice Clone Error]', error);
+
     await supabase
       .from('profiles')
       .update({ voice_clone_status: 'failed' })

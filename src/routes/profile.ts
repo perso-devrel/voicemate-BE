@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import multer from 'multer';
 import { supabase } from '../config/supabase';
 import { uploadFile, deleteFile, extractPath } from '../services/storage';
-import { generateDubbedAudio } from '../services/elevenlabs';
+import { synthesizeSpeech } from '../services/elevenlabs';
 import { authMiddleware } from '../middleware/auth';
 import { validateBody } from '../middleware/validate';
 import { profileUpsertSchema } from '../schemas/profile';
@@ -33,19 +33,34 @@ router.get('/me', async (req: AuthRequest, res: Response) => {
 router.put('/me', validateBody(profileUpsertSchema), async (req: AuthRequest, res: Response) => {
   const { display_name, birth_date, gender, nationality, language, bio, interests } = req.body;
 
+  // 기존 bio를 조회해 변경 여부 판단. bio가 바뀌지 않았으면 TTS 재생성을 건너뛰어
+  // 불필요한 ElevenLabs 호출을 막는다.
+  const { data: prev } = await supabase
+    .from('profiles')
+    .select('bio')
+    .eq('id', req.userId!)
+    .maybeSingle();
+  const prevBio = prev?.bio ?? null;
+  const nextBio = bio ?? null;
+  const bioChanged = prevBio !== nextBio;
+
+  const upsertPayload: Record<string, unknown> = {
+    id: req.userId!,
+    display_name,
+    birth_date,
+    gender,
+    nationality,
+    language,
+    bio,
+    interests: interests || [],
+    updated_at: new Date().toISOString(),
+  };
+  // bio가 바뀌면 FE 폴링이 재합성 구간을 감지할 수 있도록 오디오 URL을 먼저 null로 리셋한다.
+  if (bioChanged) upsertPayload.bio_audio_url = null;
+
   const { data, error } = await supabase
     .from('profiles')
-    .upsert({
-      id: req.userId!,
-      display_name,
-      birth_date,
-      gender,
-      nationality,
-      language,
-      bio,
-      interests: interests || [],
-      updated_at: new Date().toISOString(),
-    })
+    .upsert(upsertPayload)
     .select()
     .single();
 
@@ -54,17 +69,10 @@ router.put('/me', validateBody(profileUpsertSchema), async (req: AuthRequest, re
     return;
   }
 
-  // bio가 있고 voice clone이 있으면 비동기로 bio 오디오 생성
-  if (bio && data.elevenlabs_voice_id) {
+  // bio가 실제로 바뀐 경우에만 오디오 처리
+  if (bioChanged && bio && data.elevenlabs_voice_id) {
     generateBioAudio(req.userId!, bio, data.elevenlabs_voice_id, language)
       .catch((err) => console.error('[Bio audio generation failed]', err));
-  } else if (!bio && data.bio_audio_url) {
-    // bio 삭제 시 오디오도 제거
-    await supabase
-      .from('profiles')
-      .update({ bio_audio_url: null })
-      .eq('id', req.userId!);
-    data.bio_audio_url = null;
   }
 
   res.json(data);
@@ -74,11 +82,10 @@ async function generateBioAudio(
   userId: string,
   bio: string,
   voiceId: string,
-  language: string
+  _language: string
 ): Promise<void> {
   try {
-    // 본인 언어로 TTS (번역 없이 본인 목소리로 자기소개 읽기)
-    const { audio } = await generateDubbedAudio(bio, voiceId, language, language);
+    const audio = await synthesizeSpeech(bio, voiceId);
     const path = `${userId}/bio.mp3`;
     const audioUrl = await uploadFile('bio-audio', path, audio, 'audio/mpeg');
 

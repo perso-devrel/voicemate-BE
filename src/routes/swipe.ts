@@ -114,7 +114,7 @@ router.get('/', validateQuery(discoverQuerySchema), async (req: AuthRequest, res
 
   let query = supabase
     .from('profiles')
-    .select('id, display_name, birth_date, gender, nationality, language, bio, interests, photos, voice_clone_status, created_at')
+    .select('id, display_name, birth_date, gender, nationality, language, bio, bio_audio_url, interests, photos, voice_clone_status, created_at')
     .eq('is_active', true);
 
   if (uniqueExcludeIds.length > 0) {

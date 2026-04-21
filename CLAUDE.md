@@ -18,7 +18,7 @@ Express 5 + Supabase + ElevenLabs 기반 크로스언어 소개팅 API 서버.
 
 **인증 흐름**: Google OAuth id_token → Supabase `signInWithIdToken` → JWT 발급. 이후 요청은 `authMiddleware`에서 Supabase JWT secret으로 검증하여 `req.userId`(= `sub` claim) 세팅.
 
-**메시지 파이프라인**: 텍스트 메시지를 즉시 저장/응답한 뒤, 발신자에게 ElevenLabs voice clone이 있으면 비동기로 TTS → Dubbing API → Storage 업로드 처리. `audio_status` 필드로 진행 상태 추적. Dubbing API transcript 엔드포인트로 번역 텍스트도 추출하여 `translated_text`에 저장. 차단된 유저 간 메시지 전송은 403 차단.
+**메시지 파이프라인**: 텍스트 메시지를 즉시 저장/응답한 뒤, 발신자에게 ElevenLabs voice clone이 있으면 비동기로 번역 → TTS → Storage 업로드 처리. 송수신자 언어가 다르면 Gemini 2.0 Flash로 번역(존댓말/초면 컨텍스트 시스템 프롬프트) → `translated_text`에 저장, 이후 ElevenLabs `eleven_multilingual_v2` TTS로 발신자 클론 보이스 합성. 같은 언어면 번역 생략하고 원문 그대로 TTS. `audio_status` 필드로 진행 상태 추적. 차단된 유저 간 메시지 전송은 403 차단.
 
 **Bio 오디오**: 프로필 bio 작성/수정 시 voice clone이 있으면 비동기로 TTS 생성하여 `bio_audio_url`에 저장. 프로필 조회 시 추가 API 호출 없이 URL 반환.
 
@@ -45,8 +45,8 @@ Express 5 + Supabase + ElevenLabs 기반 크로스언어 소개팅 API 서버.
 - 매치 삭제는 soft delete (`unmatched_at`, `unmatched_by`)
 - 파일 업로드: multer 메모리 스토리지 → Supabase Storage `uploadFile` 유틸. 사진 파일명은 `{timestamp}_{uuid}.{ext}`로 원본명 미사용.
 - 사진 삭제: DB 먼저 업데이트 후 Storage 삭제는 fire-and-forget (Storage 고아 파일보다 DB 불일치가 더 위험)
-- 비동기 처리 (더빙, bio 오디오): fire-and-forget + `.catch()` 로깅. 상태 필드로 추적.
-- ElevenLabs Dubbing 폴링: 최대 300회 × 2초 = 10분 타임아웃
+- 비동기 처리 (메시지 번역/TTS, bio 오디오): fire-and-forget + `.catch()` 로깅. 상태 필드로 추적.
+- 번역은 `src/services/translation.ts`의 `translateMessage()` (Gemini 2.0 Flash, `responseMimeType: application/json`, `BLOCK_ONLY_HIGH` safety). TTS는 `src/services/elevenlabs.ts`의 `synthesizeSpeech()`.
 - Supabase `.update()` / `.delete()`에서 count가 필요하면 `{ count: 'exact' }` 옵션 사용
 
 ## DB Migrations
