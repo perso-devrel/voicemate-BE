@@ -9,6 +9,11 @@ dist/
 .env.local
 .env.*.local
 
+# GCP service account credentials
+credentials/
+*.gcp.json
+*-service-account*.json
+
 # Logs
 *.log
 npm-debug.log*

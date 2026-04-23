@@ -24,7 +24,8 @@ export const env = {
     apiKey: required('ELEVENLABS_API_KEY'),
   },
 
-  gemini: {
-    apiKey: required('GEMINI_API_KEY'),
+  vertexAi: {
+    projectId: required('GCP_PROJECT_ID'),
+    location: process.env.GCP_LOCATION || 'us-central1',
   },
 };
