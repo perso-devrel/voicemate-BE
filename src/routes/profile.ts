@@ -31,7 +31,20 @@ router.get('/me', async (req: AuthRequest, res: Response) => {
 
 // 내 프로필 수정 (생성 포함 - upsert)
 router.put('/me', validateBody(profileUpsertSchema), async (req: AuthRequest, res: Response) => {
-  const { display_name, birth_date, gender, nationality, language, bio, interests } = req.body;
+  const { display_name, birth_date, gender, nationality, language, languages, bio, interests } = req.body;
+
+  // 다중 언어 입력이 들어오면 첫 항목 코드를 primary `language` 로 도출한다.
+  // 번역/TTS 파이프라인은 단일 코드 기준으로 동작하므로 둘을 항상 동기화한다.
+  const normalizedLanguages: { code: string; level: number }[] | null = Array.isArray(languages) && languages.length > 0
+    ? languages
+    : (typeof language === 'string' ? [{ code: language, level: 3 }] : null);
+
+  if (!normalizedLanguages) {
+    res.status(400).json({ error: 'language or languages required' });
+    return;
+  }
+
+  const primaryLanguage = normalizedLanguages[0].code;
 
   // 기존 bio를 조회해 변경 여부 판단. bio가 바뀌지 않았으면 TTS 재생성을 건너뛰어
   // 불필요한 ElevenLabs 호출을 막는다.
@@ -50,7 +63,8 @@ router.put('/me', validateBody(profileUpsertSchema), async (req: AuthRequest, re
     birth_date,
     gender,
     nationality,
-    language,
+    language: primaryLanguage,
+    languages: normalizedLanguages,
     bio,
     interests: interests || [],
     updated_at: new Date().toISOString(),
@@ -71,7 +85,7 @@ router.put('/me', validateBody(profileUpsertSchema), async (req: AuthRequest, re
 
   // bio가 실제로 바뀐 경우에만 오디오 처리
   if (bioChanged && bio && data.elevenlabs_voice_id) {
-    generateBioAudio(req.userId!, bio, data.elevenlabs_voice_id, language)
+    generateBioAudio(req.userId!, bio, data.elevenlabs_voice_id, primaryLanguage)
       .catch((err) => console.error('[Bio audio generation failed]', err));
   }
 
