@@ -45,6 +45,15 @@ export const swaggerDocument = {
           updated_at: { type: 'string', format: 'date-time' },
         },
       },
+      PhotoAccess: {
+        type: 'object',
+        description: '상대 사진 공개 단계. main=프로필 메인 블러 해제, all=추가 사진 전체 조회 허용.',
+        properties: {
+          main_photo_unlocked: { type: 'boolean' },
+          all_photos_unlocked: { type: 'boolean' },
+        },
+        required: ['main_photo_unlocked', 'all_photos_unlocked'],
+      },
       ProfileCandidate: {
         type: 'object',
         properties: {
@@ -56,7 +65,15 @@ export const swaggerDocument = {
           language: { type: 'string' },
           bio: { type: 'string', nullable: true },
           interests: { type: 'array', items: { type: 'string' } },
-          photos: { type: 'array', items: { type: 'string', format: 'uri' } },
+          photos: {
+            type: 'array',
+            items: { type: 'string', format: 'uri' },
+            description: 'discover 는 잠금 해제 대상 아님. 서버가 메인 1장으로 필터링(길이 0 또는 1).',
+          },
+          photo_access: {
+            allOf: [{ $ref: '#/components/schemas/PhotoAccess' }],
+            description: 'discover 정책상 항상 { false, false }.',
+          },
         },
       },
       Match: {
@@ -77,14 +94,20 @@ export const swaggerDocument = {
           created_at: { type: 'string', format: 'date-time' },
           partner: {
             type: 'object',
+            nullable: true,
             properties: {
               id: { type: 'string', format: 'uuid' },
               display_name: { type: 'string' },
-              photos: { type: 'array', items: { type: 'string', format: 'uri' } },
+              photos: {
+                type: 'array',
+                items: { type: 'string', format: 'uri' },
+                description: 'all_photos_unlocked=true 이면 전체, 아니면 메인 1장(서버측 필터링).',
+              },
               nationality: { type: 'string' },
               language: { type: 'string' },
             },
           },
+          photo_access: { $ref: '#/components/schemas/PhotoAccess' },
           last_message: {
             type: 'object',
             nullable: true,

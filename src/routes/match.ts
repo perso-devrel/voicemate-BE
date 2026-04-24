@@ -17,6 +17,9 @@ interface MatchSummary {
   last_message_sender_id: string | null;
   last_message_created_at: string | null;
   unread_count: number;
+  round_trip_count: number;
+  main_photo_unlocked: boolean;
+  all_photos_unlocked: boolean;
 }
 
 const router = Router();
@@ -65,9 +68,9 @@ router.get('/', validateQuery(matchListQuerySchema), async (req: AuthRequest, re
 
   const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
 
-  // 3. 매치별 마지막 메시지 + 읽지 않은 수 (RPC)
+  // 3. 매치별 마지막 메시지 + 읽지 않은 수 + 라운드트립 기반 unlock 플래그 (RPC v2)
   const matchIds = matches.map((m) => m.id);
-  const { data: summaries } = await supabase.rpc('get_match_summaries', {
+  const { data: summaries } = await supabase.rpc('get_match_summaries_v2', {
     match_ids: matchIds,
     viewer_id: req.userId!,
   });
@@ -77,14 +80,33 @@ router.get('/', validateQuery(matchListQuerySchema), async (req: AuthRequest, re
   );
 
   // 4. 조합
+  // 보안 경계: Supabase Storage URL 은 public 이므로 FE 블러는 UX 보호일 뿐.
+  //            all_photos_unlocked=false 인 경우 서버에서 photos 배열을 잘라
+  //            메인 1장만 노출한다 (photos[0] 이 없으면 빈 배열).
   const results = matches.map((match) => {
     const partnerId = match.user1_id === req.userId! ? match.user2_id : match.user1_id;
     const summary = summaryMap.get(match.id);
+    const rawPartner = profileMap.get(partnerId);
+
+    const photoAccess = {
+      main_photo_unlocked: Boolean(summary?.main_photo_unlocked),
+      all_photos_unlocked: Boolean(summary?.all_photos_unlocked),
+    };
+
+    const partner = rawPartner
+      ? {
+          ...rawPartner,
+          photos: photoAccess.all_photos_unlocked
+            ? (rawPartner.photos ?? [])
+            : (rawPartner.photos ?? []).slice(0, 1),
+        }
+      : null;
 
     return {
       match_id: match.id,
       created_at: match.created_at,
-      partner: profileMap.get(partnerId) || null,
+      partner,
+      photo_access: photoAccess,
       last_message: summary?.last_message_id
         ? {
             id: summary.last_message_id,

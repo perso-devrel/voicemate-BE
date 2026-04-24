@@ -159,8 +159,15 @@ router.get('/', validateQuery(discoverQuerySchema), async (req: AuthRequest, res
 
   scored.sort((a, b) => b._score - a._score);
 
-  // 프론트에 반환할 때 score, voice_clone_status, created_at 제외
-  const results = scored.slice(0, limit).map(({ _score, voice_clone_status, created_at, ...rest }) => rest);
+  // 프론트에 반환할 때 score, voice_clone_status, created_at 제외.
+  // 보안 경계: discover 는 잠금 해제 대상이 아니므로 서버에서 photos 배열을 메인 1장으로 잘라
+  //            본인 프로필 외 추가 사진 URL 노출을 원천 차단한다.
+  //            photo_access 는 정책상 항상 false/false 고정 (FE 는 forceBlur 정책을 적용).
+  const results = scored.slice(0, limit).map(({ _score, voice_clone_status, created_at, photos, ...rest }) => ({
+    ...rest,
+    photos: (photos ?? []).slice(0, 1),
+    photo_access: { main_photo_unlocked: false, all_photos_unlocked: false },
+  }));
 
   res.json(results);
 });
