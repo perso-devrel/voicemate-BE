@@ -70,6 +70,19 @@ describe('Match Routes', () => {
       expect(res.body.length).toBeGreaterThanOrEqual(1);
       expect(res.body[0]).toHaveProperty('match_id');
       expect(res.body[0]).toHaveProperty('partner');
+
+      // PhotoAccess: 매치 직후 메시지 0개 → round_trip_count=0 → 둘 다 false
+      expect(res.body[0]).toHaveProperty('photo_access');
+      expect(res.body[0].photo_access).toEqual({
+        main_photo_unlocked: false,
+        all_photos_unlocked: false,
+      });
+
+      // 보안 경계: all_photos_unlocked=false 이므로 서버가 photos 를 메인 1장 이하로 잘라낸다.
+      if (res.body[0].partner) {
+        expect(Array.isArray(res.body[0].partner.photos)).toBe(true);
+        expect(res.body[0].partner.photos.length).toBeLessThanOrEqual(1);
+      }
     });
 
     it('잘못된 limit이면 400', async () => {

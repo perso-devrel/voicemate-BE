@@ -53,6 +53,19 @@ describe('Swipe Routes', () => {
 
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
+
+      // PhotoAccess: discover 는 잠금 해제 대상이 아님 → 항상 false/false,
+      // 서버는 photos 를 메인 1장으로 필터링 (길이 0 또는 1).
+      if (res.body.length > 0) {
+        const candidate = res.body[0];
+        expect(candidate).toHaveProperty('photo_access');
+        expect(candidate.photo_access).toEqual({
+          main_photo_unlocked: false,
+          all_photos_unlocked: false,
+        });
+        expect(Array.isArray(candidate.photos)).toBe(true);
+        expect(candidate.photos.length).toBeLessThanOrEqual(1);
+      }
     });
   });
 
