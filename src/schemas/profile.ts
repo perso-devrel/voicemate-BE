@@ -18,7 +18,7 @@ export const profileUpsertSchema = z.object({
   // Multi-language with proficiency. When present, languages[0] becomes the
   // primary `language`. Required to be non-empty if provided.
   languages: z.array(languageProficiencySchema).min(1).max(10).optional(),
-  bio: z.string().max(500).nullable().optional(),
+  voice_intro: z.string().max(500).nullable().optional(),
   interests: z.array(z.string().max(30)).max(10).optional(),
 }).refine((data) => data.language || (data.languages && data.languages.length > 0), {
   message: 'Either language or languages must be provided',

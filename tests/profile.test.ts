@@ -52,13 +52,13 @@ describe('Profile Routes', () => {
           gender: 'male',
           nationality: 'KR',
           language: 'ko',
-          bio: 'Hello world',
+          voice_intro: 'Hello world',
           interests: ['music', 'travel'],
         });
 
       expect(res.status).toBe(200);
       expect(res.body.display_name).toBe('Profile Test');
-      expect(res.body.bio).toBe('Hello world');
+      expect(res.body.voice_intro).toBe('Hello world');
       expect(res.body.interests).toEqual(['music', 'travel']);
     });
 

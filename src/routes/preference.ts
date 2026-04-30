@@ -23,21 +23,20 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     min_age: 18,
     max_age: 100,
     preferred_genders: ['male', 'female', 'other'],
-    preferred_languages: [],
     preferred_languages_detail: [],
+    preferred_nationalities: [],
   });
 });
 
 // 선호도 설정 (upsert)
 router.put('/', validateBody(preferenceSchema), async (req: AuthRequest, res: Response) => {
-  const { min_age, max_age, preferred_genders, preferred_languages, preferred_languages_detail } = req.body;
-
-  // 다중 언어/레벨 입력이 들어오면 코드 배열을 그것에서 도출하여 두 컬럼을 동기화한다.
-  // (discover 의 swipe.ts 는 여전히 preferred_languages TEXT[] 만 IN-필터에 사용한다.)
-  const detail = Array.isArray(preferred_languages_detail) ? preferred_languages_detail : [];
-  const codes = detail.length > 0
-    ? detail.map((d: { code: string }) => d.code)
-    : (preferred_languages ?? []);
+  const {
+    min_age,
+    max_age,
+    preferred_genders,
+    preferred_languages_detail,
+    preferred_nationalities,
+  } = req.body;
 
   const { data, error } = await supabase
     .from('user_preferences')
@@ -46,8 +45,8 @@ router.put('/', validateBody(preferenceSchema), async (req: AuthRequest, res: Re
       min_age,
       max_age,
       preferred_genders,
-      preferred_languages: codes,
-      preferred_languages_detail: detail,
+      preferred_languages_detail,
+      preferred_nationalities,
       updated_at: new Date().toISOString(),
     })
     .select()
