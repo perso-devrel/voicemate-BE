@@ -61,12 +61,19 @@ router.get('/', validateQuery(matchListQuerySchema), async (req: AuthRequest, re
     m.user1_id === req.userId! ? m.user2_id : m.user1_id
   );
 
+  // languages JSONB 에서 primary 코드를 derive 해서 응답의 단일 `language` 필드를 채운다.
+  // (mig 008 에서 profiles.language scalar 컬럼이 삭제됐으므로 select 에 직접 포함할 수 없음)
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('id, display_name, photos, nationality, language')
+    .select('id, display_name, photos, nationality, languages')
     .in('id', partnerIds);
 
-  const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
+  const profileMap = new Map(
+    (profiles || []).map((p) => {
+      const langs = (p.languages as { code: string; level: number }[] | null) ?? [];
+      return [p.id, { ...p, language: langs[0]?.code ?? '' }];
+    }),
+  );
 
   // 3. 매치별 마지막 메시지 + 읽지 않은 수 + 라운드트립 기반 unlock 플래그 (RPC v2)
   const matchIds = matches.map((m) => m.id);
@@ -95,7 +102,10 @@ router.get('/', validateQuery(matchListQuerySchema), async (req: AuthRequest, re
 
     const partner = rawPartner
       ? {
-          ...rawPartner,
+          id: rawPartner.id,
+          display_name: rawPartner.display_name,
+          nationality: rawPartner.nationality,
+          language: rawPartner.language,
           photos: photoAccess.all_photos_unlocked
             ? (rawPartner.photos ?? [])
             : (rawPartner.photos ?? []).slice(0, 1),

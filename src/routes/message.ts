@@ -93,16 +93,18 @@ router.post('/:matchId/messages', validateBody(sendMessageSchema), async (req: A
     return;
   }
 
-  // 발신자, 수신자 프로필 조회
+  // 발신자, 수신자 프로필 조회 (languages JSONB 에서 primary 코드 추출)
   const [senderResult, recipientResult] = await Promise.all([
-    supabase.from('profiles').select('language, elevenlabs_voice_id').eq('id', req.userId!).single(),
-    supabase.from('profiles').select('language').eq('id', recipientId).single(),
+    supabase.from('profiles').select('languages, elevenlabs_voice_id').eq('id', req.userId!).single(),
+    supabase.from('profiles').select('languages').eq('id', recipientId).single(),
   ]);
 
   const sender = senderResult.data;
   const recipient = recipientResult.data;
+  const senderLang = (sender?.languages as { code: string; level: number }[] | null)?.[0]?.code;
+  const recipientLang = (recipient?.languages as { code: string; level: number }[] | null)?.[0]?.code;
 
-  if (!sender || !recipient) {
+  if (!sender || !recipient || !senderLang || !recipientLang) {
     res.status(404).json({ error: 'Profile not found' });
     return;
   }
@@ -114,8 +116,8 @@ router.post('/:matchId/messages', validateBody(sendMessageSchema), async (req: A
       match_id: matchId,
       sender_id: req.userId!,
       original_text: text,
-      original_language: sender.language,
-      translated_language: recipient.language,
+      original_language: senderLang,
+      translated_language: recipientLang,
       emotion: storedEmotion,
       audio_status: sender.elevenlabs_voice_id ? 'processing' : 'pending',
     })
@@ -136,8 +138,8 @@ router.post('/:matchId/messages', validateBody(sendMessageSchema), async (req: A
       message.id,
       text,
       sender.elevenlabs_voice_id,
-      sender.language,
-      recipient.language,
+      senderLang,
+      recipientLang,
       storedEmotion
     ).catch((err) => console.error('[processMessageAudio unhandled]', err));
   }
@@ -199,7 +201,7 @@ router.post('/:messageId/retry', async (req: AuthRequest, res: Response) => {
 
   const { data: sender } = await supabase
     .from('profiles')
-    .select('elevenlabs_voice_id, language')
+    .select('elevenlabs_voice_id, languages')
     .eq('id', req.userId!)
     .single();
 

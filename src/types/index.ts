@@ -4,20 +4,28 @@ export interface AuthRequest extends Request {
   userId?: string;
 }
 
+export interface LanguageProficiency {
+  code: string;
+  level: 1 | 2 | 3;
+}
+
 export interface Profile {
   id: string;
   display_name: string;
   birth_date: string;
   gender: 'male' | 'female' | 'other';
   nationality: string;
+  // Derived from languages[0].code on the response. The DB column was dropped
+  // in migration 008; the API still exposes this for backwards compatibility.
   language: string;
-  bio: string | null;
+  languages: LanguageProficiency[];
+  voice_intro: string | null;
   interests: string[];
   photos: string[];
   elevenlabs_voice_id: string | null;
   voice_sample_url: string | null;
   voice_clone_status: 'pending' | 'processing' | 'ready' | 'failed';
-  bio_audio_url: string | null;
+  voice_intro_audio_url: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -87,6 +95,7 @@ export interface UserPreference {
   min_age: number;
   max_age: number;
   preferred_genders: string[];
-  preferred_languages: string[];
+  preferred_languages_detail: LanguageProficiency[];
+  preferred_nationalities: string[];
   updated_at: string;
 }
